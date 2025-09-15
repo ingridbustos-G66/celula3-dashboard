@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dashboard Comercial – Selección por Periodo y Ejecutivo</title>
+  <style>
+    :root { --bg:#0f172a; --panel:#111827; --card:#0b1220; --muted:#94a3b8; --accent:#06b6d4; --ok:#22c55e; --bad:#ef4444; }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Helvetica,Arial;
+         background:linear-gradient(145deg,#0b0f1a,#10182a);color:#e5e7eb;min-height:100vh}
+    header{display:flex;gap:16px;align-items:center;justify-content:space-between;padding:20px 24px;border-bottom:1px solid rgba(148,163,184,.12)}
+    .title{font-weight:700;letter-spacing:.3px}
+    .wrap{max-width:1200px;margin:0 auto;padding:16px}
+    .toolbar{display:grid;grid-template-columns:1fr 1fr auto;gap:12px;margin:12px 0 20px}
+    .control{display:flex;flex-direction:column;gap:6px;background:rgba(255,255,255,.04);padding:12px;border-radius:12px;border:1px solid rgba(148,163,184,.12)}
+    label{font-size:12px;color:var(--muted);letter-spacing:.3px}
+    select,button{background:#0d1424;border:1px solid rgba(148,163,184,.25);color:#e5e7eb;padding:10px 12px;border-radius:10px;font-size:14px}
+    button{cursor:pointer}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+    .card{background:rgba(255,255,255,.04);border:1px solid rgba(148,163,184,.12);border-radius:14px;padding:16px;min-height:120px}
+    .badge{position:fixed;right:12px;bottom:12px;padding:6px 10px;border-radius:8px;font-size:12px;border:1px solid rgba(148,163,184,.25);background:rgba(255,255,255,.06);backdrop-filter:blur(6px)}
+    table{width:100%;border-collapse:collapse;margin-top:8px}
+    th,td{border-bottom:1px dashed rgba(148,163,184,.15);padding:6px 8px;text-align:left;font-size:13px}
+    th{color:#cbd5e1;font-weight:600}
+    .muted{color:var(--muted);font-size:12px}
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <div class="title">Dashboard Comercial</div>
+      <div class="muted">Selector por <b>Periodo</b> y <b>Ejecutivo</b> (datos desde <code>data/datos.csv</code>)</div>
+    </div>
+    <div><button id="btn-csv">Cargar CSV manual</button></div>
+  </header>
+
+  <div class="wrap">
+    <div class="toolbar">
+      <div class="control">
+        <label for="sel-periodo">Periodo</label>
+        <select id="sel-periodo"><option value="">—</option></select>
+      </div>
+      <div class="control">
+        <label for="sel-ejecutivo">Ejecutivo</label>
+        <select id="sel-ejecutivo"><option value="">—</option></select>
+      </div>
+      <div class="control" style="grid-column:auto / span 1">
+        <label>&nbsp;</label>
+        <button id="btn-clear">Limpiar filtros</button>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <div><b>Resumen</b></div>
+        <div id="kpis" class="muted">Selecciona Periodo y/o Ejecutivo.</div>
+      </div>
+      <div class="card">
+        <div><b>Detalle filtrado</b></div>
+        <div class="muted">Primeras 10 filas.</div>
+        <div id="table-wrap"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="badge" class="badge" style="display:none"></div>
+
+  <input type="file" id="file" accept=".csv,text/csv" style="display:none" />
+
+<script>
+// === Utilidades ===
+const SHOW_BADGE_MS = 8000;
+function showBadge(text, ok=true){
+  const el = document.getElementById('badge');
+  el.textContent = text;
+  el.style.borderColor = ok ? 'rgba(34,197,94,.5)' : 'rgba(239,68,68,.5)';
+  el.style.background = ok ? 'rgba(34,197,94,.08)' : 'rgba(239,68,68,.08)';
+  el.style.display = 'block';
+  setTimeout(()=>{ el.style.display='none'; }, SHOW_BADGE_MS);
+}
+function detectDelimiter(headerLine){
+  const sc = (headerLine.match(/;/g)||[]).length;
+  const cc = (headerLine.match(/,/g)||[]).length;
+  return sc > cc ? ';' : ',';
+}
+function csvParseSmart(text){
+  // Manejo simple de BOM
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+  // Detectar delimitador por primera línea
+  const firstNL = text.indexOf('\n');
+  const headerLine = text.slice(0, firstNL).trim();
+  const delim = detectDelimiter(headerLine);
+  // Parser básico que soporta comillas
+  const rows = [];
+  let i = 0, field = '', row = [], inQuotes = false;
+  const pushField = () => { row.push(field); field = ''; };
+  const pushRow = () => { rows.push(row); row = []; };
+  while (i < text.length) {
+    const ch = text[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (text[i+1] === '"') { field += '"'; i+=2; continue; } // "" -> "
+        inQuotes = false; i++; continue;
+      } else { field += ch; i++; continue; }
+    } else {
+      if (ch === '"') { inQuotes = true; i++; continue; }
+      if (ch === delim) { pushField(); i++; continue; }
+      if (ch === '\r') { i++; continue; }
+      if (ch === '\n') { pushField(); pushRow(); i++; continue; }
+      field += ch; i++; continue;
+    }
+  }
+  // última celda/fila
+  pushField(); if (row.length) pushRow();
+  // map headers
+  const headers = rows.shift().map(h => h.trim());
+  const data = rows.filter(r => r.some(c => String(c).trim() !== ''))
+    .map(r => {
+      const o = {}; headers.forEach((h,idx)=>{ o[h] = (r[idx] ?? '').toString().trim(); });
+      return o;
+    });
+  return { headers, data };
+}
+function normalizeKey(k){
+  return k.toString().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toLowerCase();
+}
+function remapKeys(row, mapping){
+  const out = {};
+  for (const [rawKey, val] of Object.entries(row)){
+    const nk = normalizeKey(rawKey);
+    const target = mapping[nk] || rawKey;
+    out[target] = val;
+  }
+  return out;
+}
+function uniqueSorted(arr){
+  return Array.from(new Set(arr.filter(Boolean))).sort((a,b)=> (a>b?1:-1));
+}
+
+// === App ===
+let RAW = [];
+let M = []; // mapeado a claves estándar
+let HEADERS = [];
+
+const KEY_MAP = (()=>{
+  // normalizado (sin acentos, minúsculas)
+  const map = {};
+  const mapTo = (variants, target) => variants.forEach(v => map[normalizeKey(v)] = target);
+  mapTo(['Periodo','Período','periodo','PERIODO'], 'Periodo');
+  mapTo(['Ejecutivo','Account Executive','Vendedor','Seller','Agente','Asesor'], 'Ejecutivo');
+  mapTo(['Semana','Fecha','Week'], 'Semana');
+  // Métricas comunes (opcionales):
+  mapTo(['BD','Base de Datos'], 'BD');
+  mapTo(['Contacto','Contactados'], 'Contacto');
+  mapTo(['Interesado','Interés','Interesados'], 'Interesado');
+  mapTo(['Reunión','Reunion'], 'Reunión');
+  mapTo(['Aprobado','Aprobados'], 'Aprobado');
+  mapTo(['NTU'], 'NTU');
+  mapTo(['AHA'], 'AHA');
+  return map;
+})();
+
+function populateSelectors(){
+  const periodos = uniqueSorted(M.map(r => r['Periodo']));
+  const ejecutivos = uniqueSorted(M.map(r => r['Ejecutivo']));
+  const selP = document.getElementById('sel-periodo');
+  const selE = document.getElementById('sel-ejecutivo');
+  selP.innerHTML = '<option value="">—</option>' + periodos.map(p=>`<option>${p}</option>`).join('');
+  selE.innerHTML = '<option value="">—</option>' + ejecutivos.map(e=>`<option>${e}</option>`).join('');
+}
+
+function render(){
+  const p = document.getElementById('sel-periodo').value;
+  const e = document.getElementById('sel-ejecutivo').value;
+  let rows = M;
+  if (p) rows = rows.filter(r => r['Periodo'] === p);
+  if (e) rows = rows.filter(r => r['Ejecutivo'] === e);
+
+  // KPIs rápidos si existen columnas
+  const kpis = [];
+  const sum = (k)=> rows.reduce((acc,r)=> acc + (parseFloat(String(r[k]).replace(/[^0-9.\-]/g,''))||0), 0);
+  ['BD','Contacto','Interesado','Reunión','Aprobado','NTU','AHA'].forEach(k => {
+    if (HEADERS.includes(k)) kpis.push(`${k}: ${sum(k)}`);
+  });
+  document.getElementById('kpis').textContent = kpis.length ? kpis.join('  ·  ') : `${rows.length} filas`;
+
+  // Tabla: muestra primeras 10
+  const cols = ['Periodo','Ejecutivo'].concat(HEADERS.filter(h => !['Periodo','Ejecutivo'].includes(h))).slice(0,6);
+  let html = '<table><thead><tr>' + cols.map(c=>`<th>${c}</th>`).join('') + '</tr></thead><tbody>';
+  rows.slice(0,10).forEach(r => {
+    html += '<tr>' + cols.map(c=>`<td>${r[c]??''}</td>`).join('') + '</tr>';
+  });
+  html += '</tbody></table>';
+  document.getElementById('table-wrap').innerHTML = html;
+}
+
+function ingest(text){
+  const parsed = csvParseSmart(text);
+  RAW = parsed.data;
+  // Remapear claves a estándar
+  M = RAW.map(r => remapKeys(r, KEY_MAP));
+  // HEADERS finales (conserva nombres target si existen)
+  const allKeys = new Set();
+  M.forEach(r => Object.keys(r).forEach(k => allKeys.add(k)));
+  HEADERS = Array.from(allKeys);
+  if (!HEADERS.includes('Periodo') || !HEADERS.includes('Ejecutivo')){
+    showBadge('Faltan columnas requeridas: Periodo y/o Ejecutivo', false);
+  }
+  populateSelectors();
+  render();
+}
+
+// Cargar desde distintas rutas automáticamente
+(function autoLoad(){
+  const GH_USER = 'ingridbustos-g66';
+  const GH_REPO = 'celula3-dashboard';
+  const GH_BRANCH = 'main';
+  const candidates = [
+    './data/datos.csv',
+    './datos.csv',
+    'https://raw.githubusercontent.com/'+GH_USER+'/'+GH_REPO+'/'+GH_BRANCH+'/data/datos.csv',
+    'https://raw.githubusercontent.com/'+GH_USER+'/'+GH_REPO+'/'+GH_BRANCH+'/datos.csv',
+  ];
+  (function tryNext(i){
+    if (i>=candidates.length){ showBadge('No se encontraron datos (usa "Cargar CSV")', false); return; }
+    const url = candidates[i];
+    fetch(url, {cache:'no-store'}).then(r=>{
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      return r.text();
+    }).then(text=>{
+      ingest(text);
+      showBadge('Datos cargados: '+url, true);
+    }).catch(_=> tryNext(i+1));
+  })(0);
+})();
+
+// Eventos
+document.getElementById('sel-periodo').addEventListener('change', render);
+document.getElementById('sel-ejecutivo').addEventListener('change', render);
+document.getElementById('btn-clear').addEventListener('click', ()=>{
+  document.getElementById('sel-periodo').value='';
+  document.getElementById('sel-ejecutivo').value='';
+  render();
+});
+document.getElementById('btn-csv').addEventListener('click', ()=> document.getElementById('file').click());
+document.getElementById('file').addEventListener('change', (ev)=>{
+  const f = ev.target.files[0];
+  if(!f) return;
+  const reader = new FileReader();
+  reader.onload = e => { ingest(e.target.result); showBadge('Datos cargados (archivo local)', true); };
+  reader.readAsText(f);
+});
+</script>
+</body>
+</html>
