@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Reporte de Desempeño 1:1 (v4.4)</title>
+  <!--
+  v4.4 – Fix crítico de regex y pruebas
+  - Corrige regex inválida en parseCSV: split(/\r?\n/) ✅
+  - Elimina duplicación/typo en declaración de 'num' ✅
+  - Arregla tests con saltos de línea ESCAPADOS ("\n"/"\r\n") ✅
+  - Mantiene: predictivo semanal fijo a 4 semanas, embudo, ranking, logros, compromisos, tendencia, BOM y headers flexibles.
+  -->
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);padding:20px;min-height:100vh}
+    .container{max-width:1400px;margin:0 auto;background:#fff;border-radius:20px;box-shadow:0 20px 60px rgba(0,0,0,.3);overflow:hidden}
+
+    /* Header */
+    .header{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:#fff;padding:26px}
+    .header h1{font-size:2.2rem;margin-bottom:8px;text-align:center}
+    .header-info{display:flex;justify-content:center;gap:12px;flex-wrap:wrap;margin-top:8px}
+    .header-info div{background:rgba(255,255,255,.2);padding:8px 14px;border-radius:10px}
+    .toolbar{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:16px}
+    .toolbar .group{display:flex;gap:8px;align-items:center;background:rgba(255,255,255,.18);padding:8px 10px;border-radius:10px}
+    .toolbar label{font-size:.9rem;opacity:.95}
+    .toolbar select,.toolbar input[type=file]{appearance:none;border:0;background:#fff;color:#333;padding:6px 10px;border-radius:8px;cursor:pointer}
+    .toolbar button{border:0;background:#fff;color:#333;padding:8px 12px;border-radius:10px;cursor:pointer;font-weight:700;box-shadow:0 10px 30px rgba(0,0,0,.08)}
+
+    /* Section */
+    .section{padding:40px;background:#f8f9fa}
+    .section.white{background:#fff}
+    .section-title{text-align:center;font-size:2rem;color:#333;margin-bottom:26px;position:relative}
+    .section-title:after{content:"";position:absolute;bottom:-10px;left:50%;transform:translateX(-50%);width:100px;height:4px;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);border-radius:2px}
+
+    /* Funnels (estilo original) */
+    .funnels-container{display:flex;justify-content:space-around;align-items:flex-start;gap:40px;flex-wrap:wrap;margin-top:20px}
+    .funnel-wrapper{flex:1;min-width:300px;max-width:480px}
+    .funnel-title{text-align:center;font-size:1.3rem;font-weight:700;margin-bottom:14px;color:#555}
+    .funnel{position:relative;width:100%;padding:10px 0}
+    .funnel-stage{position:relative;margin:0 auto 2px;height:60px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;transition:.3s ease;cursor:pointer;clip-path:polygon(10% 0%,90% 0%,85% 100%,15% 100%)}
+    .funnel-stage:hover{transform:scale(1.02);filter:brightness(1.06)}
+    .stage-bd{background:#6366f1}
+    .stage-contact{background:#8b5cf6}
+    .stage-interest{background:#a855f7}
+    .stage-meeting{background:#c084fc}
+    .stage-approved{background:#d8b4fe;color:#222}
+    .stage-ntu{background:#e9d5ff;color:#222}
+    .stage-aha{background:linear-gradient(135deg,#fbbf24,#f59e0b);clip-path:none;border-radius:10px;color:#fff}
+    .stage-content{text-align:center;padding:5px;position:relative;z-index:2}
+    .stage-name{font-size:.9em;opacity:.9}
+    .stage-value{font-size:1.25em;font-weight:800}
+    .stage-diff{font-size:.85em;opacity:.85}
+    .conversion-indicator{text-align:center;margin:4px 0;font-size:.9em;color:#666}
+
+    /* Comparison cards */
+    .comparison{background:#fff;padding:24px;border-radius:15px;box-shadow:0 5px 15px rgba(0,0,0,.06)}
+    .comparison-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:16px}
+    .comparison-item{text-align:center;padding:14px;background:#f8f9fa;border-radius:10px}
+    .status-good{color:#10b981}.status-warning{color:#f59e0b}.status-danger{color:#ef4444}
+
+    /* Achievements */
+    .achievements-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:18px;margin-top:18px}
+    .achievement-card{background:linear-gradient(135deg,#f3f4f6,#e5e7eb);padding:18px;border-radius:15px;text-align:center;transition:.3s}
+    .achievement-card:hover{transform:translateY(-4px);box-shadow:0 10px 30px rgba(0,0,0,.08)}
+    .achievement-icon{font-size:2rem;margin-bottom:6px}
+    .achievement-title{font-weight:800;color:#333;margin-bottom:4px}
+    .achievement-value{font-size:1.1rem;color:#667eea;font-weight:800}
+
+    /* Projection */
+    .projection-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:18px;margin-top:18px}
+    .projection-card{background:#fff;padding:22px;border-radius:15px;box-shadow:0 5px 15px rgba(0,0,0,.06)}
+    .projection-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+    .projection-title{font-size:1.1rem;font-weight:800;color:#333}
+    .projection-badge{padding:5px 12px;border-radius:20px;font-size:.9em;font-weight:800}
+    .badge-high{background:#10b981;color:#fff}.badge-medium{background:#f59e0b;color:#fff}.badge-low{background:#ef4444;color:#fff}
+    .detail-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f0f0f0}
+    .detail-label{color:#666}
+    .detail-value{font-weight:800;color:#333}
+    .progress-label{font-size:.9em;color:#666;margin:6px 0}
+    .progress-bar{height:22px;background:#e5e7eb;border-radius:12px;overflow:hidden}
+    .progress-fill{height:100%;background:linear-gradient(90deg,#667eea,#764ba2);transition:width 1s ease;display:flex;align-items:center;justify-content:flex-end;padding-right:10px;color:#fff;font-weight:800;font-size:.85em}
+
+    /* Commitments */
+    .commitments-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:18px;margin-top:18px}
+    .commitment-card{background:#f8f9fa;padding:18px;border-radius:15px;border-left:4px solid #667eea}
+    .commitment-title{font-weight:800;color:#333;margin-bottom:10px;display:flex;align-items:center;gap:10px}
+    .commitment-list{list-style:none}
+    .commitment-item{padding:8px 0;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;gap:10px}
+    .commitment-item:last-child{border-bottom:none}
+    .checkbox{width:18px;height:18px;border:2px solid #667eea;border-radius:4px}
+
+    /* Table (ranking) */
+    .table-wrap{background:#fff;border-radius:15px;padding:18px;box-shadow:0 5px 15px rgba(0,0,0,.06);overflow:auto}
+    table{width:100%;border-collapse:collapse}
+    th,td{padding:10px 12px;border-bottom:1px solid #eee;text-align:left}
+    th{background:#fafafa;font-weight:800;color:#444}
+    tr.highlight td{background:#f1f5ff}
+
+    /* Footer */
+    .footer{background:#333;color:#fff;text-align:center;padding:18px;font-size:.9em}
+
+    @media print{.toolbar{display:none}body{background:#fff}.footer{color:#000}}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <h1>📊 Reporte de Desempeño – Reunión 1:1</h1>
+      <div class="header-info" id="header-info">
+        <div><strong>Ejecutivo:</strong> <span id="h-ejecutivo">—</span></div>
+        <div><strong>Fecha:</strong> <span id="h-fecha">—</span></div>
+        <div><strong>Team Leader:</strong> <span id="h-leader">—</span></div>
+        <div><strong>Período:</strong> <span id="h-periodo">—</span></div>
+        <div><strong>🏆 Ranking:</strong> <span id="h-ranking">—</span></div>
+      </div>
+      <div class="toolbar">
+        <div class="group"><label for="csv">Cargar CSV</label><input id="csv" type="file" accept=".csv" /></div>
+        <div class="group"><label for="periodo">Periodo</label><select id="periodo"><option value="">—</option></select></div>
+        <div class="group"><label for="ejecutivo">Ejecutivo</label><select id="ejecutivo"><option value="">—</option></select></div>
+        <div class="group"><label for="semana">Semana</label><select id="semana"><option value="">—</option></select></div>
+        <button id="btn-print">Imprimir / Exportar PDF</button>
+      </div>
+    </div>
+
+    <!-- Embudos -->
+    <div class="section">
+      <h2 class="section-title">Análisis Comparativo del Funnel de Ventas</h2>
+      <div class="funnels-container">
+        <div class="funnel-wrapper">
+          <div class="funnel-title">📐 EMBUDO IDEAL</div>
+          <div class="funnel" id="funnel-ideal"></div>
+        </div>
+        <div class="funnel-wrapper">
+          <div class="funnel-title">📈 EMBUDO REAL</div>
+          <div class="funnel" id="funnel-real"></div>
+        </div>
+      </div>
+      <div class="comparison" style="margin-top:22px">
+        <h3 style="text-align:center;margin-bottom:12px">📊 Métricas de Conversión</h3>
+        <div class="comparison-grid" id="conversion-grid"></div>
+      </div>
+    </div>
+
+    <!-- Logros & Reconocimientos -->
+    <div class="section white">
+      <h2 class="section-title">🏆 Logros y Reconocimientos del Período</h2>
+      <div class="achievements-grid" id="achievements"></div>
+    </div>
+
+    <!-- Proyección y Análisis Predictivo -->
+    <div class="section">
+      <h2 class="section-title">📈 Proyección de Cierre Mensual & Análisis Predictivo</h2>
+      <div class="projection-cards">
+        <div class="projection-card" id="card-aha"></div>
+        <div class="projection-card" id="card-ntu"></div>
+        <div class="projection-card" id="card-predict"></div>
+      </div>
+    </div>
+
+    <!-- Ranking del equipo -->
+    <div class="section white">
+      <h2 class="section-title">🏅 Ranking del Equipo (Periodo)</h2>
+      <div class="table-wrap">
+        <table id="rank-table"><thead><tr><th>#</th><th>Ejecutivo</th><th>AHA (acum.)</th><th>NTU (acum.)</th></tr></thead><tbody></tbody></table>
+      </div>
+    </div>
+
+    <!-- Compromisos -->
+    <div class="section">
+      <h2 class="section-title">📝 Compromisos y Plan de Acción</h2>
+      <div class="commitments-grid">
+        <div class="commitment-card">
+          <div class="commitment-title"><span>🧠</span><span>Compromisos Cualitativos</span></div>
+          <ul class="commitment-list" id="comp-cual"></ul>
+        </div>
+        <div class="commitment-card">
+          <div class="commitment-title"><span>🎯</span><span>Compromisos Cuantitativos</span></div>
+          <ul class="commitment-list" id="comp-cuant"></ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tendencia del Mes / 3 meses si hay datos -->
+    <div class="section white">
+      <h2 class="section-title">📈 Tendencia</h2>
+      <div class="comparison" style="padding:30px">
+        <canvas id="trend" width="900" height="280" style="max-width:100%"></canvas>
+      </div>
+    </div>
+
+    <div class="footer">
+      <p>Reporte generado automáticamente | Global66 Business – Equipo Comercial B2B</p>
+    </div>
+  </div>
+
+<script>
+  // ===== Utilidades =====
+  const $ = s=>document.querySelector(s);
+  const $$ = s=>[...document.querySelectorAll(s)];
+  const IDEAL = { BD:380, Contacto:266, Interesado:80, 'Reunión':52, Aprobado:29, NTU:20, AHA:10 };
+  const IDEAL_WIDTHS = { BD:100, Contacto:90, Interesado:75, 'Reunión':60, Aprobado:45, NTU:30, AHA:20 };
+
+  function parseCSV(text){
+    // Detectar delimitador y normalizar BOM/acentos/espacios en headers
+    const delim = text.indexOf(';')!==-1? ';' : ',';
+    const stripBOM = s => String(s).replace(/^\uFEFF/, '');
+    const norm = s => stripBOM(String(s||'').trim())
+                      .normalize('NFD').replace(/[\u0300-\u036f]/g,'') // quitar diacríticos
+                      .toLowerCase().replace(/[^a-z0-9]+/g,'');
+    // Mapeo de headers "flexibles" → nombres canónicos usados por el reporte
+    const CANON = {
+      periodo:'Periodo', semana:'Semana', fechasemana:'FechaSemana', ejecutivo:'Ejecutivo', teamleader:'TeamLeader',
+      bd:'BD', contacto:'Contacto', interesado:'Interesado', reunion:'Reunión', aprobado:'Aprobado',
+      ntu:'NTU', aha:'AHA', llamadasrealizadas:'LlamadasRealizadas', llamadascompletadas:'LlamadasCompletadas',
+      reunionesdiscovery:'ReunionesDiscovery', reunionesonboarding:'ReunionesOnboarding', reunionesactivacion:'ReunionesActivación', reunionesactivación:'ReunionesActivación',
+      metaaha:'MetaAHA', metantu:'MetaNTU', metallamadas:'MetaLlamadas',
+      compcualitativo1:'CompCualitativo1', compcualitativo2:'CompCualitativo2', compcualitativo3:'CompCualitativo3',
+      compcuantitativo1:'CompCuantitativo1', compcuantitativo2:'CompCuantitativo2', compcuantitativo3:'CompCuantitativo3',
+      comentarios:'Comentarios'
+    };
+
+    const lines = stripBOM(text).trim().split(/\r?\n/).filter(Boolean);
+    if(lines.length<2) throw new Error('CSV vacío o sin filas de datos');
+
+    const rawHeaders = lines[0].split(delim);
+    const headersCanon = rawHeaders.map(h=>{
+      const key = norm(h);
+      return CANON[key] || stripBOM(String(h).trim()); // si no mapea, dejamos encabezado tal cual
+    });
+
+    // Avisos en consola si hay headers no mapeados/esperados
+    const REQUIRED = ['Periodo','Semana','Ejecutivo','TeamLeader','BD','Contacto','Interesado','Reunión','Aprobado','NTU','AHA','LlamadasRealizadas','LlamadasCompletadas','ReunionesDiscovery','ReunionesOnboarding','ReunionesActivación','MetaAHA','MetaNTU','MetaLlamadas'];
+    const unknown = headersCanon.filter(h=> !CANON[norm(h)] && !REQUIRED.includes(h));
+    if(unknown.length){ console.warn('Headers no estandarizados (se usarán tal cual):', unknown); }
+    const missing = REQUIRED.filter(r=> !headersCanon.includes(r));
+    if(missing.length){ console.warn('Faltan headers requeridos en el CSV:', missing); }
+
+    return lines.slice(1).map(line=>{
+      const cells = line.split(delim);
+      const obj = {}; headersCanon.forEach((canon,i)=> obj[canon] = (cells[i]??'').trim());
+      return obj;
+    });
+  }
+  const num = v=> v==null||v===''? 0 : Number(String(v).replace(',','.'))||0;
+  const pct = (n,d)=> d>0? Math.round((n/d)*100):0;
+  const clamp=(v,a,b)=> Math.max(a, Math.min(b,v));
+
+  function fmtDiff(val, ideal){
+    if(ideal<=0) return '—';
+    const d = Math.round(((val-ideal)/ideal)*100);
+    return (d>0? '+'+d:d)+'%';
+  }
+
+  // Suaviza anchos del embudo para que no colapsen: interpola vs ancho ideal
+  function smoothWidth(stage, value){
+    const wIdeal = IDEAL_WIDTHS[stage]||40; // base estética
+    const vIdeal = IDEAL[stage]||1;
+    // factor entre 0 y 1 respecto al ideal
+    const f = vIdeal? Math.sqrt(Math.max(0, value)/vIdeal) : 1; // sqrt para suavizar caída
+    const w = wIdeal * (0.5 + 0.5*f); // nunca menos de 50% del ancho ideal
+    return clamp(Math.round(w), 14, 100);
+  }
+
+  function stage(label, cls, value, diff){
+    const div = document.createElement('div');
+    div.className = `funnel-stage ${cls}`;
+    div.style.width = `${smoothWidth(label, value)}%`;
+    div.innerHTML = `<div class="stage-content"><div class="stage-name">${label}</div><div class="stage-value">${value}</div><div class="stage-diff">${diff}</div></div>`;
+    return div;
+  }
+
+  function renderFunnel(container, data){
+    container.innerHTML = '';
+    const seq = [
+      ['BD','stage-bd'],['Contacto','stage-contact'],['Interesado','stage-interest'],['Reunión','stage-meeting'],['Aprobado','stage-approved'],['NTU','stage-ntu'],['AHA','stage-aha']
+    ];
+    seq.forEach(([key,cls],i)=>{
+      const val = num(data[key]);
+      container.appendChild(stage(key, cls, val, fmtDiff(val, IDEAL[key])));
+      if(i<seq.length-1){
+        const prev = num(data[seq[i][0]]); const conv = prev? Math.round((val/prev)*100):0;
+        const meta = [70,30,65,55,70,50][i]||0; // metas estándar
+        const status = conv>=meta? '✅' : (conv>=meta-5? '🟡' : '🔴');
+        const ci = document.createElement('div'); ci.className='conversion-indicator';
+        ci.textContent = `↓ ${conv}% ${status} (Meta: ${meta}%)`;
+        container.appendChild(ci);
+      }
+    });
+  }
+
+  function conversionGrid(row){
+    const BD=num(row.BD), C=num(row.Contacto), I=num(row.Interesado), R=num(row['Reunión']), A=num(row.Aprobado), N=num(row.NTU), H=num(row.AHA);
+    const metas=[['BD → Contacto',pct(C,BD),70],['Contacto → Interesado',pct(I,C),30],['Interesado → Reunión',pct(R,I),65],['Reunión → Aprobado',pct(A,R),55],['Aprobado → NTU',pct(N,A),70],['NTU → AHA',pct(H,N),50]];
+    const wrap = $('#conversion-grid'); wrap.innerHTML='';
+    metas.forEach(([lbl,v,m])=>{
+      const div=document.createElement('div');div.className='comparison-item';
+      const cls = v>=m? 'status-good' : (v>=m-5? 'status-warning':'status-danger');
+      div.innerHTML=`<div class="comparison-label">${lbl}</div><div class="comparison-value ${cls}">${v}%</div><div class="comparison-label">(Meta: ${m}%)</div>`;
+      wrap.appendChild(div);
+    })
+  }
+
+  function achievements(rowsPE, ranks, ej){
+    const wrap = $('#achievements'); wrap.innerHTML='';
+    const sum = (k)=> rowsPE.reduce((s,r)=> s+num(r[k]),0);
+    const ll=sum('LlamadasRealizadas');
+    const reuniones = sum('ReunionesDiscovery')+sum('ReunionesOnboarding')+sum('ReunionesActivación');
+    const aha=sum('AHA');
+    const ntu=sum('NTU');
+    const last = rowsPE[rowsPE.length-1]||{}; const BD=num(last.BD), C=num(last.Contacto), I=num(last.Interesado), R=num(last['Reunión']), A=num(last.Aprobado), N=num(last.NTU), H=num(last.AHA);
+    const pairs=[['BD → Contacto',pct(C,BD),70],['Contacto → Interesado',pct(I,C),30],['Interesado → Reunión',pct(R,I),65],['Reunión → Aprobado',pct(A,R),55],['Aprobado → NTU',pct(N,A),70],['NTU → AHA',pct(H,N),50]];
+    const best = pairs.slice().sort((a,b)=> (b[1]-b[2]) - (a[1]-a[2]))[0];
+    const myRank = (ranks.find(x=>x.ejecutivo===ej)||{}).rank;
+    const totalRanks = ranks.length;
+    let deltaC = '—';
+    if(rowsPE.length>=2){
+      const c1=num(rowsPE[rowsPE.length-1].Contacto), c0=num(rowsPE[rowsPE.length-2].Contacto);
+      if(c0>0){ deltaC = ((c1-c0)/c0*100); deltaC = (deltaC>0?'+':'')+Math.round(deltaC)+'%'; }
+    }
+
+    const items = [
+      ['🥇','Mayor Conversión', `${best?best[0]+': '+best[1]+'%':''}`],
+      ['📞','Llamadas Realizadas', `${ll}`],
+      ['🎯','Reuniones Totales', `${reuniones}`],
+      ['⭐','Ranking Equipo', myRank? `#${myRank} de ${totalRanks}`:'—'],
+      ['📈','Mejora vs semana anterior', deltaC],
+      ['💪','AHAs Generados', `${aha}`]
+    ];
+
+    items.forEach(([icon,title,val])=>{
+      const card=document.createElement('div');card.className='achievement-card';
+      card.innerHTML=`<div class="achievement-icon">${icon}</div><div class="achievement-title">${title}</div><div class="achievement-value">${val}</div>`;
+      wrap.appendChild(card);
+    });
+  }
+
+  function badgeFromPct(p){ return p>=80? 'badge-high' : (p>=50? 'badge-medium' : 'badge-low'); }
+
+  function projectionCards(rowsPE, metaA, metaN){
+    const sum = (k)=> rowsPE.reduce((s,r)=> s+num(r[k]),0);
+    const ahaAct=sum('AHA'), ntuAct=sum('NTU');
+    const ahaPct = metaA? Math.round((ahaAct/metaA)*100):0;
+    const ntuPct = metaN? Math.round((ntuAct/metaN)*100):0;
+
+    $('#card-aha').innerHTML = `
+      <div class="projection-header"><span class="projection-title">Proyección AHA</span><span class="projection-badge ${badgeFromPct(ahaPct)}">${ahaPct>=80? 'Buen Ritmo': (ahaPct>=50?'Riesgo Medio':'Riesgo Alto')}</span></div>
+      <div class="detail-row"><span class="detail-label">AHAs actuales:</span><span class="detail-value">${ahaAct}</span></div>
+      <div class="detail-row"><span class="detail-label">Meta mensual:</span><span class="detail-value">${metaA||'—'}</span></div>
+      <div class="detail-row"><span class="detail-label">Proyección fin de mes:</span><span class="detail-value" id="aha-proy">—</span></div>
+      <div class="detail-row"><span class="detail-label">% Cumplimiento estimado:</span><span class="detail-value ${ahaPct>=80?'status-good':(ahaPct>=50?'status-warning':'status-danger')}">${ahaPct}%</span></div>
+      <div class="progress-label">Progreso hacia la meta</div><div class="progress-bar"><div class="progress-fill" style="width:${clamp(ahaPct,0,100)}%">${clamp(ahaPct,0,100)}%</div></div>`;
+
+    $('#card-ntu').innerHTML = `
+      <div class="projection-header"><span class="projection-title">Proyección NTU</span><span class="projection-badge ${badgeFromPct(ntuPct)}">${ntuPct>=80? 'Buen Ritmo': (ntuPct>=50?'Riesgo Medio':'Riesgo Alto')}</span></div>
+      <div class="detail-row"><span class="detail-label">NTUs actuales:</span><span class="detail-value">${ntuAct}</span></div>
+      <div class="detail-row"><span class="detail-label">Meta mensual:</span><span class="detail-value">${metaN||'—'}</span></div>
+      <div class="detail-row"><span class="detail-label">Proyección fin de mes:</span><span class="detail-value" id="ntu-proy">—</span></div>
+      <div class="detail-row"><span class="detail-label">% Cumplimiento estimado:</span><span class="detail-value ${ntuPct>=80?'status-good':(ntuPct>=50?'status-warning':'status-danger')}">${ntuPct}%</span></div>
+      <div class="progress-label">Progreso hacia la meta</div><div class="progress-bar"><div class="progress-fill" style="width:${clamp(ntuPct,0,100)}%">${clamp(ntuPct,0,100)}%</div></div>`;
+  }
+
+  // ==== Predictivo por semana (4 semanas fijas) ====
+  function predictiveAnalysis(periodo, rowsPE, currentWeek){
+    const totalWeeks = 4; // 🔒 Fijo a 4 semanas por período
+    const weeksExec = [...new Set(rowsPE.map(r=> parseInt(r.Semana,10)))].sort((a,b)=>a-b);
+    const transWeeks = currentWeek ? weeksExec.filter(w=> w<=currentWeek).length : Math.min(weeksExec.length, totalWeeks);
+    const restWeeks = Math.max(0, totalWeeks - transWeeks);
+
+    const sum = (k, upto)=> rowsPE.filter(r=> !upto || parseInt(r.Semana,10)<=upto).reduce((s,r)=> s+num(r[k]),0);
+    const ahaAct = sum('AHA', currentWeek);
+    const ntuAct = sum('NTU', currentWeek);
+
+    const speedAHA = transWeeks>0? (ahaAct/transWeeks) : 0;
+    const speedNTU = transWeeks>0? (ntuAct/transWeeks) : 0;
+
+    const ahaProy = Math.round(ahaAct + speedAHA*restWeeks);
+    const ntuProy = Math.round(ntuAct + speedNTU*restWeeks);
+
+    $('#aha-proy').textContent = ahaProy;
+    $('#ntu-proy').textContent = ntuProy;
+
+    const metaA = num(rowsPE[0]?.MetaAHA); const metaN = num(rowsPE[0]?.MetaNTU);
+    const reqAHA = restWeeks>0? Math.max(0, metaA - ahaAct)/restWeeks : 0;
+    const reqNTU = restWeeks>0? Math.max(0, metaN - ntuAct)/restWeeks : 0;
+
+    $('#card-predict').innerHTML = `
+      <div class="projection-header"><span class="projection-title">Análisis Predictivo (Semanal)</span><span class="projection-badge ${ (reqAHA<=speedAHA && reqNTU<=speedNTU)? 'badge-high' : (reqAHA<=(speedAHA*1.5) ? 'badge-medium':'badge-low') }">${restWeeks>0?'En curso':'Cierre'}</span></div>
+      <div class="detail-row"><span class="detail-label">Semanas del período:</span><span class="detail-value">${totalWeeks}</span></div>
+      <div class="detail-row"><span class="detail-label">Transcurridas:</span><span class="detail-value">${transWeeks}</span></div>
+      <div class="detail-row"><span class="detail-label">Restantes:</span><span class="detail-value">${restWeeks}</span></div>
+      <div class="detail-row"><span class="detail-label">Velocidad actual AHA/semana:</span><span class="detail-value">${(speedAHA).toFixed(2)}</span></div>
+      <div class="detail-row"><span class="detail-label">Velocidad requerida AHA/semana:</span><span class="detail-value">${(reqAHA).toFixed(2)}</span></div>
+      <div class="detail-row"><span class="detail-label">Velocidad actual NTU/semana:</span><span class="detail-value">${(speedNTU).toFixed(2)}</span></div>
+      <div class="detail-row"><span class="detail-label">Velocidad requerida NTU/semana:</span><span class="detail-value">${(reqNTU).toFixed(2)}</span></div>
+      <div style="margin-top:12px;padding:12px;background:#fef3c7;border-radius:10px;color:#78350f"><strong>⚠️ Recomendación:</strong> Ajustar foco semanal según gap vs meta; priorizar etapas con menor conversión (ver métricas) y seguimiento de aprobados para acelerar NTU/AHA.</div>`;
+  }
+
+  function renderCommitments(row){
+    const cual = [row.CompCualitativo1,row.CompCualitativo2,row.CompCualitativo3].filter(Boolean);
+    const cuant = [row.CompCuantitativo1,row.CompCuantitativo2,row.CompCuantitativo3].filter(Boolean);
+    const rc=(ul,arr)=>{ ul.innerHTML=''; if(arr.length===0){ul.innerHTML='<li class="commitment-item"><div class="checkbox"></div><span>Sin compromisos</span></li>'; return;} arr.forEach(t=>{ const li=document.createElement('li'); li.className='commitment-item'; li.innerHTML='<div class="checkbox"></div><span>'+t+'</span>'; ul.appendChild(li); }); };
+    rc($('#comp-cual'),cual); rc($('#comp-cuant'),cuant);
+  }
+
+  // Ranking por periodo
+  function computeRanking(data, periodo){
+    const rowsP = data.filter(r=> r.Periodo===periodo);
+    const map = new Map();
+    rowsP.forEach(r=>{
+      const ej = r.Ejecutivo||'(Sin nombre)';
+      const cur = map.get(ej)||{ejecutivo:ej,AHA:0,NTU:0}; cur.AHA+=num(r.AHA); cur.NTU+=num(r.NTU); map.set(ej,cur);
+    });
+    const arr = [...map.values()].sort((a,b)=> b.AHA-a.AHA || b.NTU-a.NTU || a.ejecutivo.localeCompare(b.ejecutivo));
+    arr.forEach((o,i)=> o.rank=i+1); return arr;
+  }
+  function renderRankingTable(rankArr, currentEj){
+    const tb=$('#rank-table tbody'); tb.innerHTML=''; rankArr.forEach(r=>{ const tr=document.createElement('tr'); if(r.ejecutivo===currentEj) tr.classList.add('highlight'); tr.innerHTML=`<td>${r.rank}</td><td>${r.ejecutivo}</td><td>${r.AHA}</td><td>${r.NTU}</td>`; tb.appendChild(tr); });
+  }
+
+  // Tendencia (3 meses si hay datos, si no el mes)
+  function drawTrend(canvas, labels, aha, ntu){
+    const ctx=canvas.getContext('2d'); const W=canvas.width,H=canvas.height,pad=40; const gh=H-pad*2, gw=W-pad*2; const maxVal=Math.max(10,...aha,...ntu);
+    ctx.clearRect(0,0,W,H); ctx.strokeStyle='#e5e7eb'; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(pad,pad); ctx.lineTo(pad,H-pad); ctx.lineTo(W-pad,H-pad); ctx.stroke();
+    ctx.strokeStyle='#f3f4f6'; ctx.lineWidth=1; ctx.fillStyle='#666'; ctx.font='12px Arial'; ctx.textAlign='right';
+    for(let i=0;i<=5;i++){ const y=pad+gh/5*i; ctx.beginPath(); ctx.moveTo(pad,y); ctx.lineTo(W-pad,y); ctx.stroke(); ctx.fillText(Math.round(maxVal-maxVal/5*i), pad-10, y+5); }
+    const stepX=labels.length>1? gw/(labels.length-1):gw;
+    function line(data,color){ ctx.strokeStyle=color; ctx.lineWidth=3; ctx.beginPath(); data.forEach((v,i)=>{ const x=pad+stepX*i; const y=H-pad-(v/maxVal)*gh; if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y); ctx.fillStyle=color; ctx.beginPath(); ctx.arc(x,y,4,0,Math.PI*2); ctx.fill(); ctx.fillStyle='#333'; ctx.font='bold 12px Arial'; ctx.textAlign='center'; ctx.fillText(v, x, y-10); }); ctx.stroke(); }
+    line(aha,'#f59e0b'); line(ntu,'#667eea'); ctx.fillStyle='#666'; ctx.font='12px Arial'; ctx.textAlign='center'; labels.forEach((m,i)=>{ const x=pad+stepX*i; ctx.fillText(m,x,H-pad+18); });
+    ctx.fillStyle='#f59e0b'; ctx.fillRect(W-120,18,20,3); ctx.fillStyle='#333'; ctx.fillText('AHA', W-95,24); ctx.fillStyle='#667eea'; ctx.fillRect(W-120,34,20,3); ctx.fillStyle='#333'; ctx.fillText('NTU', W-95,40);
+  }
+
+  // ===== Estado =====
+  let DATA=[];
+
+  function populateSelectors(data){
+    DATA=data;
+    const periodos=[...new Set(data.map(r=>r.Periodo))].filter(Boolean).sort();
+    $('#periodo').innerHTML='<option value="">—</option>'+periodos.map(p=>`<option>${p}</option>`).join('');
+
+    $('#periodo').onchange = ()=>{
+      $('#ejecutivo').innerHTML='<option value="">—</option>';
+      $('#semana').innerHTML='<option value="">—</option>';
+      const rowsP = DATA.filter(r=> r.Periodo===$('#periodo').value);
+      const ejecutivos=[...new Set(rowsP.map(r=>r.Ejecutivo))].filter(Boolean).sort();
+      $('#ejecutivo').innerHTML='<option value="">—</option>'+ejecutivos.map(e=>`<option>${e}</option>`).join('');
+      const ranks=computeRanking(DATA, $('#periodo').value); renderRankingTable(ranks, '');
+    };
+
+    $('#ejecutivo').onchange = ()=>{
+      $('#semana').innerHTML='<option value="">—</option>';
+      const rowsPE = DATA.filter(r=> r.Periodo===$('#periodo').value && r.Ejecutivo===$('#ejecutivo').value);
+      const semanas=[...new Set(rowsPE.map(r=>r.Semana))].sort((a,b)=> num(a)-num(b));
+      $('#semana').innerHTML='<option value="">—</option>'+semanas.map(s=>`<option>${s}</option>`).join('');
+      const ranks=computeRanking(DATA, $('#periodo').value); renderRankingTable(ranks, $('#ejecutivo').value);
+    };
+
+    $('#semana').onchange = ()=>{
+      const p=$('#periodo').value, e=$('#ejecutivo').value, s=$('#semana').value; if(!p||!e||!s) return;
+      const row = DATA.find(r=> r.Periodo===p && r.Ejecutivo===e && r.Semana===s); if(!row) return;
+      const rowsPE = DATA.filter(r=> r.Periodo===p && r.Ejecutivo===e).sort((a,b)=> num(a.Semana)-num(b.Semana));
+
+      // Header
+      $('#h-ejecutivo').textContent=row.Ejecutivo||'—';
+      $('#h-leader').textContent=row.TeamLeader||'—';
+      $('#h-periodo').textContent=row.Periodo||'—';
+      $('#h-fecha').textContent=row.FechaSemana||'—';
+
+      const ranks=computeRanking(DATA, p); const me=ranks.find(r=>r.ejecutivo===e); $('#h-ranking').textContent = me? `#${me.rank} de ${ranks.length}` : '—'; renderRankingTable(ranks, e);
+
+      // Embudos
+      renderFunnel($('#funnel-ideal'), IDEAL);
+      renderFunnel($('#funnel-real'), row);
+
+      // Métricas de conversión
+      conversionGrid(row);
+
+      // Proyección & predictivo
+      projectionCards(rowsPE, num(row.MetaAHA), num(row.MetaNTU));
+      predictiveAnalysis(p, rowsPE, parseInt(s,10));
+
+      // Logros
+      achievements(rowsPE, ranks, e);
+
+      // Compromisos
+      renderCommitments(row);
+
+      // Tendencia (últimos 3 periodos si hay)
+      const periodsAll=[...new Set(DATA.filter(r=> r.Ejecutivo===e).map(r=>r.Periodo))].sort();
+      const last3=periodsAll.slice(-3);
+      const labels = last3.length? last3 : rowsPE.map(r=>'S'+r.Semana);
+      let aha, ntu;
+      if(last3.length){
+        aha = last3.map(pp=> DATA.filter(r=> r.Ejecutivo===e && r.Periodo===pp).reduce((s,o)=> s+num(o.AHA),0));
+        ntu = last3.map(pp=> DATA.filter(r=> r.Ejecutivo===e && r.Periodo===pp).reduce((s,o)=> s+num(o.NTU),0));
+      }else{
+        const sorted = rowsPE; aha = sorted.map(r=> num(r.AHA)); ntu = sorted.map(r=> num(r.NTU));
+      }
+      drawTrend($('#trend'), labels, aha, ntu);
+    };
+  }
+
+  // Eventos
+  $('#csv').addEventListener('change', (ev)=>{
+    const file = ev.target.files?.[0]; if(!file) return;
+    const fr=new FileReader(); fr.onload=()=>{ try{ const data=parseCSV(String(fr.result)); populateSelectors(data); alert('✅ CSV cargado. Selecciona Periodo, Ejecutivo y Semana.'); } catch(e){ console.error(e); alert('❌ Error al leer el CSV. Revisa el formato.'); } }; fr.readAsText(file,'utf-8');
+  });
+  $('#btn-print').onclick = ()=> window.print();
+
+  // Render inicial
+  renderFunnel($('#funnel-ideal'), IDEAL);
+
+  // Tests básicos del parser y predictivo semanal (no cambian el comportamiento del app)
+  (function tests(){ try{
+    // 1) CSV con comas y \n
+    const r1=parseCSV('A,B\n1,2\n3,4'); console.assert(r1.length===2,'CSV coma OK');
+    // 2) CSV con punto y coma y CRLF
+    const r2=parseCSV('A;B\r\nx;y\r\nq;w'); console.assert(r2[1].B==='w','CSV ; + CRLF OK');
+    // 3) BOM + headers flexibles/acento
+    const r3=parseCSV('\uFEFFPeriodo;Reunion\n2025-09;5'); console.assert(r3[0]['Reunión']!==undefined,'Header flex Reunión OK');
+    // 4) Predictivo semanal (4 semanas fijas): 2 transcurridas, 2 restantes, 3 AHA → vel 1.5/sem → proy +3 = 6
+    const fakeDATA=[{Periodo:'2025-09',Semana:'1',Ejecutivo:'A',AHA:1,NTU:1},{Periodo:'2025-09',Semana:'2',Ejecutivo:'A',AHA:2,NTU:1}];
+    window.DATA = fakeDATA; // usar global CONTROLADO en test
+    const rowsPE=fakeDATA.filter(r=> r.Ejecutivo==='A');
+    const ap=document.createElement('span'); ap.id='aha-proy'; document.body.appendChild(ap);
+    const np=document.createElement('span'); np.id='ntu-proy'; document.body.appendChild(np);
+    const cp=document.createElement('div'); cp.id='card-predict'; document.body.appendChild(cp);
+    predictiveAnalysis('2025-09', rowsPE, 2);
+    console.assert(parseInt($('#aha-proy').textContent,10)===6,'Predictivo semanal AHA OK');
+  }catch(e){ console.warn('Tests fallidos',e); } })();
+</script>
+</body>
+</html>
