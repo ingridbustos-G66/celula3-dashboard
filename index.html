@@ -1076,32 +1076,72 @@
         });
     </script>
 <script>
-    // Carga automática de datos: intenta leer ./data/datos.csv al abrir el dashboard.
+    // Loader robusto: intenta varias rutas (locales y GitHub Raw) y muestra estado.
     (function(){
-      const AUTO_URL = './data/datos.csv';
-      try {
-        fetch(AUTO_URL, { cache: 'no-store' })
-          .then(r => {
-            if (!r.ok) throw new Error('No encontrado');
+      var GH_USER = 'ingridbustos-g66';
+      var GH_REPO = 'celula3-dashboard';
+      var GH_BRANCH = 'main';
+
+      var candidates = [
+        './data/datos.csv',
+        './datos.csv',
+        'https://raw.githubusercontent.com/' + GH_USER + '/' + GH_REPO + '/' + GH_BRANCH + '/data/datos.csv',
+        'https://raw.githubusercontent.com/' + GH_USER + '/' + GH_REPO + '/' + GH_BRANCH + '/datos.csv'
+      ];
+
+      function addStatus(text, ok){
+        try {
+          var badge = document.createElement('div');
+          badge.textContent = text;
+          badge.style.position = 'fixed';
+          badge.style.right = '12px';
+          badge.style.bottom = '12px';
+          badge.style.padding = '6px 10px';
+          badge.style.borderRadius = '8px';
+          badge.style.fontSize = '12px';
+          badge.style.background = ok ? 'rgba(0,128,0,.12)' : 'rgba(128,0,0,.12)';
+          badge.style.border = ok ? '1px solid rgba(0,128,0,.35)' : '1px solid rgba(128,0,0,.35)';
+          badge.style.backdropFilter = 'blur(6px)';
+          badge.style.zIndex = '9999';
+          badge.title = 'Estado de datos';
+          document.body.appendChild(badge);
+          setTimeout(function(){ badge.remove(); }, 8000);
+        } catch(e){}
+      }
+
+      function tryNext(i){
+        if (i >= candidates.length){
+          addStatus('No se encontraron datos automáticos (usa "Cargar CSV").', false);
+          return;
+        }
+        var url = candidates[i];
+        fetch(url, { cache: 'no-store' })
+          .then(function(r){
+            if (!r.ok) throw new Error('HTTP ' + r.status);
             return r.text();
           })
-          .then(text => {
+          .then(function(text){
             try {
-              const data = parseCSV(text);
-              if (Array.isArray(data) && data.length) {
+              var data = parseCSV(text);
+              if (Array.isArray(data) && data.length){
                 populateSelectors(data);
-                console.log('Datos cargados automáticamente desde', AUTO_URL);
+                addStatus('Datos cargados: ' + url, true);
               } else {
-                console.warn('CSV vacío o inválido en', AUTO_URL);
+                console.warn('CSV vacío en', url);
+                tryNext(i+1);
               }
-            } catch (e) {
-              console.warn('Error parseando el CSV automático:', e);
+            } catch(parseErr){
+              console.warn('Error parseando CSV', url, parseErr);
+              tryNext(i+1);
             }
           })
-          .catch(e => console.log('Auto-data no disponible (usa "Cargar CSV"):', e));
-      } catch (err) {
-        console.log('Fetch no soportado o error general:', err);
+          .catch(function(err){
+            console.log('No se pudo cargar', url, err);
+            tryNext(i+1);
+          });
       }
+
+      tryNext(0);
     })();
   </script>
 </body>
